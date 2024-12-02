@@ -1,6 +1,5 @@
 import cvxpy as cp
 import numpy as np
-
 import matplotlib.pyplot as plt
 
 class ExperimentRunner:
@@ -15,15 +14,54 @@ class ExperimentRunner:
         self.opt_problem = opt_problem
         self.B_values = B_values
         self.results = []  # To store the results for plotting
+        self.accuracy_values = []
+        self.savings_values = []
 
     def run(self):
-        """
-        Run the optimization problem for each B value and store the results.
-        """
         for B in self.B_values:
-            q, utility = self.opt_problem.solve(B)
-            self.results.append((B, utility, q))
+            q, utility, accuracy, savings = self.opt_problem.solve(B)
+            self.results.append((B, utility, q, accuracy, savings))
+            self.accuracy_values.append(accuracy)
+            self.savings_values.append(savings)
 
+    def plot_all_savings(self):
+        """
+        Plot savings for all rounds in one plot with different colors.
+        """
+        B_values = self.B_values
+        savings = np.array(self.savings_values)  # Shape: (len(B_values), T)
+
+        plt.figure(figsize=(10, 7))
+        for t in range(self.opt_problem.T):
+            plt.plot(B_values, savings[:, t], marker='o', linestyle='-', label=f"Round {t+1}")
+        
+        plt.title("Savings vs. Budget (B)")
+        plt.xlabel("Budget (B)")
+        plt.ylabel("Savings")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    def plot_all_accuracies(self):
+        """
+        Plot accuracy for all user types and rounds in one plot with different colors.
+        """
+        B_values = self.B_values
+        accuracy = np.array(self.accuracy_values)  # Shape: (len(B_values), I, T)
+
+        plt.figure(figsize=(10, 7))
+        for i in range(self.opt_problem.I):
+            for t in range(self.opt_problem.T):
+                plt.plot(B_values, accuracy[:, i, t], marker='o', linestyle='-', 
+                         label=f"User Type {i+1}, Round {t+1}")
+        
+        plt.title("Accuracy vs. Budget (B)")
+        plt.xlabel("Budget (B)")
+        plt.ylabel("Accuracy")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+    
     def plot_results(self):
         """
         Plot the utility as a function of B.
@@ -116,7 +154,6 @@ class ExperimentRunner:
             print("-" * 40)
 
 
-
 class OptimizationContractTheory:
     def __init__(self, I, T, N, sigma, eta, p, theta, q_max):
         # Parameters
@@ -172,76 +209,63 @@ class OptimizationContractTheory:
 
     def compute_B_t(self):
         """
-
-        Compute the available budget B_t for each round:
-        B_t = α_t * (B - Σ_{k=1}^{t-1} Σ_{i=1}^I p_i * N * R_k^i)
+        Compute available budgets B_t based on cumulative rewards.
         """
-        cumulative_R = cp.sum(cp.multiply(self.p[:, None] * self.N, self.compute_reward()), axis=0)  # Shape (T,)
-
-        B_t = []  # This will store the budget values for each round t
-
+        cumulative_R = cp.sum(cp.multiply(self.p[:, None] * self.N, self.compute_reward()), axis=0) # Shape (T,)
         # Calculate α_t (it should be a vector of length T)
-        alpha_t = np.array([self.q_max[t] / np.sum(self.q_max[t:]) for t in range(self.T)])
+        alpha_t = np.array([self.q_max[t] / np.sum(self.q_max[t:]) for t in range(self.T)]) 
 
+        B_t = [] # This will store the budget values for each round t
         for t in range(self.T):
             if t == 0:
-                B_t.append(alpha_t[t] * self.B)  # First round's budget
+                B_t.append(alpha_t[t] * self.B)
             else:
-                # Use cumulative reward up to the current round
                 B_t.append(alpha_t[t] * (self.B - cp.sum(cumulative_R[:t])))
 
-        return cp.hstack(B_t)  # This should return a vector of shape (T,)
+        return cp.hstack(B_t), cumulative_R # This should return a vector of shape (T,) for B_t
 
-    # def compute_delta_t_i(self):
-    #     pass
-
-    def compute_server_utility(self, R):
+    def compute_savings(self, B_t):
         """
-        Compute the utility U:
-        U_t = Σ_{i=1}^I p_i * N * (σ * log(1 + η * q_i^t) - R_i^t)
+        Compute savings for each round as B_t - total payment for that round.
         """
-        utility = 0
-        for t in range(self.T):
-            for i in range(self.I):
-                utility += (
-                    self.p[i]
-                    * self.N
-                    * (self.sigma * cp.log(1 + self.eta * self.q[i, t]) - R[i, t])
-                )
-        return -1*utility
+        rewards = self.compute_reward()
+        payments_t = cp.sum(cp.multiply(self.p[:, None] * self.N, rewards), axis=0)  # Total payments for each round
+        savings = B_t - payments_t  # Savings for each round
+        return savings, payments_t
+    
+    def compute_server_utility(self):
+        """
+        Compute server utility and accuracy values for all rounds and types.
+        """
+        reward = self.compute_reward()
+        accuracy = cp.log(1 + self.eta * self.q)  # Shape: (I, T)
+        utility = cp.sum(
+            cp.multiply(self.p[:, None] * self.N, self.sigma * accuracy - reward)
+        )
+        return -1 * utility, accuracy
 
     def solve(self, B_value):
         """
-        Define and solve the optimization problem:
-        Minimize U subject to q <= q_max and budget constraints.
+        Solve the optimization problem and return q, utility, accuracy, and savings.
         """
-        # Assign the budget value to the symbolic parameter
         self.B.value = B_value
 
         # Compute dependent variables
-        R = self.compute_reward()
-        B_t = self.compute_B_t()
+        B_t, cumulative_R = self.compute_B_t()  # Extract both elements
+        savings, payments_t = self.compute_savings(B_t)  # Pass only B_t
+        utility, accuracy = self.compute_server_utility()
 
         # Constraints
-        constraints = [
-            self.q[:, t] <= self.q_max[t] for t in range(self.T)
-        ]  # Max contribution
-        constraints += [
-            cp.sum(cp.multiply(self.p[:, None] * self.N, R[:, t])) <= B_t[t]
-            for t in range(self.T)
-        ]  # Budget constraints
-        constraints += [
-            self.q >= 0
-        ] # Positive data distributions
+        constraints = [self.q[:, t] <= self.q_max[t] for t in range(self.T)]
+        constraints += [payments_t[t] <= B_t[t] for t in range(self.T)]
+        constraints += [self.q >= 0]
 
-        # Objective
-        utility = self.compute_server_utility(R)
-
-        # Problem definition
+        # Solve problem
         problem = cp.Problem(cp.Minimize(utility), constraints)
         problem.solve()
 
-        return self.q.value, utility.value
+        return self.q.value, utility.value, accuracy.value, savings.value
+
         
         
 if __name__ == '__main__':
@@ -264,9 +288,12 @@ if __name__ == '__main__':
 
     # Create and run the experiment
     experiment = ExperimentRunner(opt_problem, B_values)
+    
     experiment.run()
-    # experiment.plot_results()
+    experiment.plot_results()
     # experiment.display_results()
     # experiment.plot_q_trends()
     experiment.plot_q_by_round()
     experiment.plot_q_by_type()
+    experiment.plot_all_savings()
+    experiment.plot_all_accuracies()
