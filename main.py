@@ -2,6 +2,7 @@ import numpy as np
 from experiment_runner.experiment_runner import ExperimentRunner
 from contract_theory_L2.clusters import ClusterOptimization
 from experiment_runner.plotter import Plotter
+from fitting.q_fitting import QFitter
 
 if __name__ == '__main__':
     # Example parameters for two clusters
@@ -22,14 +23,32 @@ if __name__ == '__main__':
     B_values = np.linspace(500, 5000, 10)
     experiment = ExperimentRunner(cluster_optimizer, B_values)
 
-    experiment.run()
-    plotter = Plotter(experiment.results)
-    
-    plotter.plot_results(cluster_index = 1)
-    plotter.plot_all_savings(cluster_index = 0, T = clusters_params[0]['T'])
-    plotter.plot_all_accuracies(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
-    plotter.plot_q_by_round(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
-    # Example: Plot q vs. B for Cluster 1, User Type 1
-    plotter.plot_q_vs_B(experiment.results[0], cluster_index=0, user_type_index=0)
-    plotter.plot_q_by_type(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
+    # experiment.run()
 
+    # Save the results
+    # experiment.save_results("experiment_results.pkl")
+
+    # Load the results (to demonstrate)
+    experiment.load_results("experiment_results.pkl")
+
+    # Example of available plots
+    # plotter = Plotter(experiment.results)
+    # plotter.plot_results(cluster_index = 1)
+    # plotter.plot_all_savings(cluster_index = 0, T = clusters_params[0]['T'])
+    # plotter.plot_all_accuracies(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
+    # plotter.plot_q_by_round(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
+    # # Example: Plot q vs. B for Cluster 1, User Type 1
+    # plotter.plot_q_vs_B(experiment.results[0], cluster_index=0, user_type_index=0)
+    # plotter.plot_q_by_type(cluster_index = 1, I = clusters_params[1]['I'], T = clusters_params[1]['T'])
+
+
+    # Example how to fit a curve function on q_values and B
+    q_fitter = QFitter(experiment.results[0], cluster_optimizer.clusters[0])
+
+    # Fit models and generate predictions
+    fitted_models = q_fitter.fit_q_vs_B(model="polynomial")
+    B_new = np.linspace(min(q_fitter.B_values), max(q_fitter.B_values), 50)
+    # predictions = q_fitter.predict_q(B_new, fitted_models)
+
+    # Plot fitted q vs. B grouped by user type
+    q_fitter.plot_fitted_q_vs_B(fitted_models, B_new)
