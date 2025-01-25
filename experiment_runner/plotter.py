@@ -10,7 +10,7 @@ class Plotter:
         Plot the utility as a function of B.
         """
         B_values = [result[0] for result in self.results[cluster_index]]
-        utilities = [result[1] for result in self.results[cluster_index]]
+        utilities = [-1*result[1] for result in self.results[cluster_index]]
 
         plt.figure(figsize=(8, 6))
         plt.plot(B_values, utilities, marker='o', linestyle='-', color='b')
@@ -108,6 +108,7 @@ class Plotter:
         Plot the trends of q values for each user type over all rounds in the same plot.
         Each plot corresponds to a single user type and includes all rounds.
         """
+
         B_values = [result[0] for result in self.results[cluster_index]]
         q_values = [result[2] for result in self.results[cluster_index]]  # Extract q matrices
 
