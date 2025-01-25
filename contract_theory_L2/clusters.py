@@ -30,8 +30,8 @@ class ClusterOptimization:
     def run_experiment_for_cluster(self, cluster, B_values):
         results = []
         for B in B_values:
-            q, utility, accuracy, savings = cluster.solve(B)
-            results.append((B, utility, q, accuracy, savings))
+            q, utility, accuracy, savings, total_accuracy = cluster.solve(B)
+            results.append((B, utility, q, accuracy, savings, total_accuracy))
         return results
 
     def parametric_relation_q_B(self, cluster_index, B_values):

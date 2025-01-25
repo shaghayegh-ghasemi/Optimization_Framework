@@ -1,8 +1,9 @@
 import numpy as np
 from scipy.optimize import curve_fit
+from scipy.special import expit  # Stable implementation of sigmoid
 import matplotlib.pyplot as plt
 
-class QFitter:
+class Fitter:
     def __init__(self, results, opt_problem):
         """
         Initialize QFitter with results and optimization problem.
@@ -15,12 +16,16 @@ class QFitter:
         self.opt_problem = opt_problem
         self.B_values = [result[0] for result in results]  # Extract B-values
         self.q_values = [result[2] for result in results]  # Extract q matrices
+        self.total_accuracies = [result[5] for result in results]  # Extract total accuracies
 
-    def logistic(self, B, L, k, B0):
-        """Logistic growth function."""
-        return L / (1 + np.exp(-k * (B - B0)))
+    @staticmethod
+    def logistic(B, L, k, B0):
+        """Logistic growth function with numerical stability."""
+        z = -k * (B - B0)
+        return L * expit(-z)  # Use expit for stable logistic sigmoid
 
-    def exp_decay(self, B, L, k):
+    @staticmethod
+    def exp_decay(B, L, k):
         """Exponential growth with asymptote."""
         # Clip B to prevent overflow
         B = np.clip(B, 0, 1e3)
@@ -137,3 +142,54 @@ class QFitter:
             plt.legend()
             plt.grid(True)
             plt.show()
+
+    def fit_accuracy_vs_B(self, model="logistic"):
+        """
+        Fit the summation of accuracies (A_m) as a function of B.
+
+        Parameters:
+            model (str): The type of model to fit ('logistic', 'exp_decay').
+
+        Returns:
+            function: Fitted model function.
+        """
+        B_values = np.array(self.B_values)
+        A_m_values = np.array(self.total_accuracies)
+
+        if model == "logistic":
+            params, _ = curve_fit(self.logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values)])
+            fitted_model = lambda B_new: self.logistic(B_new, *params)
+
+        elif model == "exp_decay":
+            params, _ = curve_fit(self.exp_decay, B_values, A_m_values, p0=[max(A_m_values), 1e-4], maxfev=10000)
+            fitted_model = lambda B_new: self.exp_decay(B_new, *params)
+
+        else:
+            raise ValueError(f"Unsupported model type: {model}")
+
+        return fitted_model
+
+    def plot_fitted_total_accuracy(self, fitted_model, B_new):
+        """
+        Plot the fitted total accuracy (A_m) vs. Budget (B).
+
+        Parameters:
+            fitted_model (function): The fitted model for A_m.
+        """
+        B_values = np.array(self.B_values)
+        A_m_values = np.array(self.total_accuracies)
+
+        # Generate predictions for a finer B range
+        # B_new = np.linspace(min(B_values), max(B_values), 100)
+        A_m_pred = fitted_model(B_new)
+
+        # Plot observed and fitted values
+        plt.figure(figsize=(10, 7))
+        plt.scatter(B_values, A_m_values, color='b', label="Observed $A_m$")
+        plt.plot(B_new, A_m_pred, color='r', linestyle='-', label="Fitted Curve")
+        plt.title("Summation of Accuracies ($A_m$) vs. Budget (B)")
+        plt.xlabel("Budget (B)")
+        plt.ylabel("Total Accuracy ($A_m$)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()

@@ -94,9 +94,19 @@ class OptimizationContractTheory:
         )
         return -1 * utility, accuracy
 
+    def compute_total_accuracy(self, accuracy):
+        """
+        Compute total accuracy (A_m) for all rounds and user types based on precomputed accuracy.
+        """
+        total_accuracy = 0
+        for t in range(self.T):
+            for i in range(self.I):
+                total_accuracy += self.p[i] * self.N * self.sigma * accuracy[i, t]
+        return total_accuracy
+
     def solve(self, B_value):
         """
-        Solve the optimization problem and return q, utility, accuracy, and savings.
+        Solve the optimization problem and return q, utility, accuracy, savings, and total accuracy.
         """
         self.B.value = B_value
 
@@ -104,6 +114,9 @@ class OptimizationContractTheory:
         B_t, cumulative_R = self.compute_B_t()  # Extract both elements
         savings, payments_t = self.compute_savings(B_t)  # Pass only B_t
         utility, accuracy = self.compute_server_utility()
+
+        # Compute total accuracy
+        total_accuracy = self.compute_total_accuracy(accuracy)
 
         # Constraints
         constraints = [self.q[:, t] <= self.q_max[t] for t in range(self.T)]
@@ -114,4 +127,4 @@ class OptimizationContractTheory:
         problem = cp.Problem(cp.Minimize(utility), constraints)
         problem.solve()
 
-        return self.q.value, utility.value, accuracy.value, savings.value
+        return self.q.value, utility.value, accuracy.value, savings.value, total_accuracy.value

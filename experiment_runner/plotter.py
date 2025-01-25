@@ -2,8 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class Plotter:
-    def __init__(self, results):
+    def __init__(self, results, clusters_params):
         self.results = results
+        self.clusters_params = clusters_params
 
     def plot_results(self, cluster_index):
         """
@@ -20,14 +21,14 @@ class Plotter:
         plt.grid(True)
         plt.show()
 
-    def plot_all_savings(self, cluster_index, T):
+    def plot_all_savings(self, cluster_index):
         """
         Plot savings for all rounds in one plot with different colors.
 
         :param cluster_results: Results for the specific cluster.
         :param opt_problem: The opt_problem object for this cluster.
         """
-
+        T = self.clusters_params[cluster_index]['T']
         # each round in each optimization problem contains results as (B, utility, q, accuracy, savings) within each cluster
         B_values = [result[0] for result in self.results[cluster_index]]
         savings = [result[4] for result in self.results[cluster_index]]
@@ -45,14 +46,16 @@ class Plotter:
         plt.grid(True)
         plt.show()
 
-    def plot_all_accuracies(self, cluster_index, I, T):
+    def plot_all_accuracies(self, cluster_index):
         """
         Plot accuracy for all user types and rounds in one plot with different colors.
 
         :param cluster_results: Results for the specific cluster.
         :param opt_problem: The opt_problem object for this cluster.
         """
-        
+        T = self.clusters_params[cluster_index]['T']
+        I = self.clusters_params[cluster_index]['I']
+
         B_values = [result[0] for result in self.results[cluster_index]]
         accuracy = [result[3] for result in self.results[cluster_index]]
         accuracy = np.array(accuracy)  # Shape: (len(B_values), opt_problem.I, opt_problem.T)
@@ -70,10 +73,13 @@ class Plotter:
         plt.grid(True)
         plt.show()
 
-    def plot_q_by_round(self, cluster_index, I, T):
+    def plot_q_by_round(self, cluster_index):
         """
         Plot the trends of q values for all user types in the same plot, grouped by each round.
         """
+        T = self.clusters_params[cluster_index]['T']
+        I = self.clusters_params[cluster_index]['I']
+
         B_values = [result[0] for result in self.results[cluster_index]]
         q_values = [result[2] for result in self.results[cluster_index]]  # Extract q matrices
 
@@ -103,11 +109,13 @@ class Plotter:
         plt.grid(True)
         plt.show()
 
-    def plot_q_by_type(self, cluster_index, I, T):
+    def plot_q_by_type(self, cluster_index):
         """
         Plot the trends of q values for each user type over all rounds in the same plot.
         Each plot corresponds to a single user type and includes all rounds.
         """
+        T = self.clusters_params[cluster_index]['T']
+        I = self.clusters_params[cluster_index]['I']
 
         B_values = [result[0] for result in self.results[cluster_index]]
         q_values = [result[2] for result in self.results[cluster_index]]  # Extract q matrices
@@ -124,3 +132,23 @@ class Plotter:
             plt.legend()
             plt.grid(True)
             plt.show()
+
+    def plot_total_accuracy(self, cluster_index):
+        """
+        Plot the total accuracy vs. budget for a given cluster.
+
+        :param cluster_index: Index of the cluster to compute accuracy for.
+        """
+        B_values = [result[0] for result in self.results[cluster_index]]
+        total_accuracies = [result[5] for result in self.results[cluster_index]]  # Total accuracy is in result[4]
+
+        # Plot total accuracy
+        plt.figure(figsize=(10, 7))
+        plt.plot(B_values, total_accuracies, marker='o', linestyle='-', color='b', label=f"Cluster {cluster_index + 1}")
+        plt.title(f"Total Accuracy vs. Budget (B) for Cluster {cluster_index + 1}")
+        plt.xlabel("Budget (B)")
+        plt.ylabel("Total Accuracy ($A_m$)")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
