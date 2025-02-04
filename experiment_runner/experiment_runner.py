@@ -1,5 +1,6 @@
 import pickle
 from contract_theory_L2.clusters import ClusterOptimization
+from fitting.fitting import Fitter
 
 class ExperimentRunner:
     def __init__(self, cluster_optimizer, B_values):
@@ -9,6 +10,9 @@ class ExperimentRunner:
 
     def run(self):
         self.results = self.cluster_optimizer.run_clusters(self.B_values)
+        # I should fit here and send it to stackelberg for furthur process
+        # run on stackelberg and find allocated B
+        # solve the optimization problem for each cluster and define optimal q for each user
 
     def save_results(self, filename):
         """
