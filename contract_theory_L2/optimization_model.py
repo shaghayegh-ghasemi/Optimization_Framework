@@ -2,13 +2,13 @@ import cvxpy as cp
 import numpy as np
 
 class OptimizationContractTheory:
-    def __init__(self, I, T, N, sigma, eta, p, theta, q_max):
+    def __init__(self, I, L, N, sigma, eta, p, theta, q_max):
         """
             Handles the optimization logic for a single cluster.
         """
         # Parameters
         self.I = I  # User types
-        self.T = T  # Rounds
+        self.L = L  # Rounds
         self.N = N  # Total number of users
         self.sigma = sigma  # Calibration constants
         self.eta = eta  # Calibration constants
@@ -17,7 +17,7 @@ class OptimizationContractTheory:
         self.q_max = q_max  # Maximum contribution for each round
 
         # Decision variable
-        self.q = cp.Variable((I, T), nonneg=True)  # Contribution for each user type and round
+        self.q = cp.Variable((I, L), nonneg=True)  # Contribution for each user type and round
 
         # Symbolic parameter
         self.B = cp.Parameter()  # Total budget parameter (passed later)
@@ -29,7 +29,7 @@ class OptimizationContractTheory:
         """
         big_delta = self.compute_big_delta()
         R = [] 
-        for t in range(self.T):
+        for t in range(self.L):
             R_t = []
             for i in range(self.I):
                 R_t.append(self.theta[i] * self.q[i, t] + big_delta[i, t])
@@ -44,7 +44,7 @@ class OptimizationContractTheory:
         """
         big_delta = []
 
-        for t in range(self.T):
+        for t in range(self.L):
             big_delta_t = []
             for i in range(self.I - 1):
                 big_delta_t.append(
@@ -66,7 +66,7 @@ class OptimizationContractTheory:
         alpha_t = np.array([self.q_max[t] / np.sum(self.q_max[t:]) for t in range(self.T)]) 
 
         B_t = [] # This will store the budget values for each round t
-        for t in range(self.T):
+        for t in range(self.L):
             if t == 0:
                 B_t.append(alpha_t[t] * self.B)
             else:
@@ -99,7 +99,7 @@ class OptimizationContractTheory:
         Compute total accuracy (A_m) for all rounds and user types based on precomputed accuracy.
         """
         total_accuracy = 0
-        for t in range(self.T):
+        for t in range(self.L):
             for i in range(self.I):
                 total_accuracy += self.p[i] * self.N * self.sigma * accuracy[i, t]
         return total_accuracy
@@ -119,8 +119,8 @@ class OptimizationContractTheory:
         total_accuracy = self.compute_total_accuracy(accuracy)
 
         # Constraints
-        constraints = [self.q[:, t] <= self.q_max[t] for t in range(self.T)]
-        constraints += [payments_t[t] <= B_t[t] for t in range(self.T)]
+        constraints = [self.q[:, t] <= self.q_max[t] for t in range(self.L)]
+        constraints += [payments_t[t] <= B_t[t] for t in range(self.L)]
         constraints += [self.q >= 0]
 
         # Solve problem

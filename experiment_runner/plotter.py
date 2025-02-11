@@ -28,7 +28,7 @@ class Plotter:
         :param cluster_results: Results for the specific cluster.
         :param opt_problem: The opt_problem object for this cluster.
         """
-        T = self.clusters_params[cluster_index]['T']
+        L = self.clusters_params[cluster_index]['L']
         # each round in each optimization problem contains results as (B, utility, q, accuracy, savings) within each cluster
         B_values = [result[0] for result in self.results[cluster_index]]
         savings = [result[4] for result in self.results[cluster_index]]
@@ -36,7 +36,7 @@ class Plotter:
 
 
         plt.figure(figsize=(10, 7))
-        for t in range(T):
+        for t in range(L):
             plt.plot(B_values, savings[:, t], marker='o', linestyle='-', label=f"Round {t+1}")
         
         plt.title("Savings vs. Budget (B)")
@@ -53,7 +53,7 @@ class Plotter:
         :param cluster_results: Results for the specific cluster.
         :param opt_problem: The opt_problem object for this cluster.
         """
-        T = self.clusters_params[cluster_index]['T']
+        L = self.clusters_params[cluster_index]['L']
         I = self.clusters_params[cluster_index]['I']
 
         B_values = [result[0] for result in self.results[cluster_index]]
@@ -62,7 +62,7 @@ class Plotter:
 
         plt.figure(figsize=(10, 7))
         for i in range(I):
-            for t in range(T):
+            for t in range(L):
                 plt.plot(B_values, accuracy[:, i, t], marker='o', linestyle='-', 
                          label=f"User Type {i+1}, Round {t+1}")
         
@@ -77,13 +77,13 @@ class Plotter:
         """
         Plot the trends of q values for all user types in the same plot, grouped by each round.
         """
-        T = self.clusters_params[cluster_index]['T']
+        L = self.clusters_params[cluster_index]['L']
         I = self.clusters_params[cluster_index]['I']
 
         B_values = [result[0] for result in self.results[cluster_index]]
         q_values = [result[2] for result in self.results[cluster_index]]  # Extract q matrices
 
-        for t in range(T):
+        for t in range(L):
             plt.figure(figsize=(10, 7))
             for i in range(I):
                 q_t_i = [q[i, t] for q in q_values]
@@ -114,7 +114,7 @@ class Plotter:
         Plot the trends of q values for each user type over all rounds in the same plot.
         Each plot corresponds to a single user type and includes all rounds.
         """
-        T = self.clusters_params[cluster_index]['T']
+        L = self.clusters_params[cluster_index]['L']
         I = self.clusters_params[cluster_index]['I']
 
         B_values = [result[0] for result in self.results[cluster_index]]
@@ -122,7 +122,7 @@ class Plotter:
 
         for i in range(I):
             plt.figure(figsize=(10, 7))
-            for t in range(T):
+            for t in range(L):
                 q_t_i = [q[i, t] for q in q_values]
                 plt.plot(B_values, q_t_i, marker='o', linestyle='-', label=rf"$q_{{{i+1}}}^{{{t+1}}}$")
             

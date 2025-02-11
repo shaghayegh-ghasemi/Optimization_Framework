@@ -11,7 +11,7 @@ class ClusterOptimization:
         for params in clusters_params:
             cluster = OptimizationContractTheory(
                 I=params["I"],
-                T=params["T"],
+                L=params["L"],
                 N=params["N"],
                 sigma=params["sigma"],
                 eta=params["eta"],
