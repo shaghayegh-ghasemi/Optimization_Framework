@@ -63,7 +63,7 @@ class OptimizationContractTheory:
         """
         cumulative_R = cp.sum(cp.multiply(self.p[:, None] * self.N, self.compute_reward()), axis=0) # Shape (T,)
         # Calculate α_t (it should be a vector of length T)
-        alpha_t = np.array([self.q_max[t] / np.sum(self.q_max[t:]) for t in range(self.T)]) 
+        alpha_t = np.array([self.q_max[t] / np.sum(self.q_max[t:]) for t in range(self.L)]) 
 
         B_t = [] # This will store the budget values for each round t
         for t in range(self.L):

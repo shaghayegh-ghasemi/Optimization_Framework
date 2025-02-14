@@ -11,7 +11,7 @@ class ExperimentRunner:
     def run(self):
         self.results = self.cluster_optimizer.run_clusters(self.B_values)
         # I should fit here and send it to stackelberg for furthur process
-        fitted_params = self.calculate_fitted_params(self.results, self.cluster_optimizer, model="logistic")
+        # fitted_params = self.calculate_fitted_params(self.results, self.cluster_optimizer, model="logistic")
         # run on stackelberg and find allocated B
         # solve the optimization problem for each cluster and define optimal q for each user
         
