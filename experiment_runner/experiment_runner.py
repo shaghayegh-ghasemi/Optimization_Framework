@@ -1,6 +1,7 @@
 import pickle
 from contract_theory_L2.clusters import ClusterOptimization
 from fitting.fitting import Fitter
+import numpy as np
 
 class ExperimentRunner:
     def __init__(self, cluster_optimizer, B_values):
@@ -37,6 +38,10 @@ class ExperimentRunner:
             
             # Get the fitted model function for the specified model
             fitted_model = A_fitter.fit_accuracy_vs_B(model=model)
+            
+            # Plot each fitting
+            B_new = np.linspace(min(A_fitter.B_values), max(A_fitter.B_values), 100)
+            A_fitter.plot_fitted_total_accuracy(fitted_model, B_new)
 
             # Append the fitted model function to the list
             fitted_models.append(fitted_model)

@@ -15,11 +15,11 @@ if __name__ == '__main__':
     
     # directory to save the results
     RESULTS_DIR = os.getenv("RESULTS_DIR")
-    path_res = os.path.join(RESULTS_DIR, "test_1000.pkl")
+    path_res = os.path.join(RESULTS_DIR, "test_10.pkl")
 
 
     cluster_optimizer = ClusterOptimization(clusters_params) # lower layer
-    B_values = np.linspace(50, 30000, 1000)
+    B_values = np.linspace(0, 30000, 10)
     experiment = ExperimentRunner(cluster_optimizer, B_values) # overal system model
 
     # experiment.run()
@@ -42,17 +42,19 @@ if __name__ == '__main__':
     # plotter.plot_q_by_type(cluster_index = 0)
 
     # Example how to fit a curve function on Total M and B
+    # A_fitter = Fitter(experiment.results[0], experiment.cluster_optimizer)
+    # fitted_model = A_fitter.fit_accuracy_vs_B(model="logistic")
     # B_new = np.linspace(min(A_fitter.B_values), max(A_fitter.B_values), 100)
+    # A_fitter.plot_fitted_total_accuracy(fitted_model, B_new)
 
-    # A_fitter.plot_fitted_total_accuracy(fitted_models, B_new)
     fitted_models = experiment.calculate_fitted_models(experiment.results, experiment.cluster_optimizer)
+    
     upper_layer = StackelbergSolver(fitted_models, 2)
     
-    T_values = np.linspace(100, 60000, 10)
+    T_values = np.linspace(0, 60000, 10)
     sol = upper_layer.parametric_solution(T_values)
     T_star = upper_layer.find_optimal_T(T_values, sol)
-    
-    print(T_star)
+
 
 
 

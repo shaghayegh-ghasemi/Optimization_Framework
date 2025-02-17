@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import least_squares, brentq, minimize_scalar
+from scipy.optimize import least_squares, brentq, root_scalar
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 
@@ -57,46 +57,63 @@ class StackelbergSolver:
 
             # Stabilized calculation using logarithmic approach
             log_A_m = np.log(sum_A_except_m) + log_exp_term - np.log(np.abs(denom))
-            A_m_value = np.exp(log_A_m)  # Convert back to original scale
-            equation_value = A[m] - A_m_value
+            # A_m_value = np.exp(log_A_m)  # Convert back to original scale
+            equation_value = A[m] - log_A_m
             equations.append(equation_value)
             
             # print(f"Eq (27): m = {m}, sum_A_except_m = {sum_A_except_m:.5e}, log_A_m = {log_A_m:.5e}, A_m_value = {A_m_value:.5e}, denom = {denom:.5e}, equation_value = {equation_value:.5e}")
 
         return np.array(equations)
 
-
-    def parametric_solution(self, T_values, initial_guess=None):
+    def parametric_solution(self, T_values, initial_guess=None, max_retries=3):
         """
-        Solve the system of 2M equations for a range of T values to derive A_m(T) and gamma_m(T).
-
+        Solve the system of 2M equations for a range of T values to derive A_m(T) and gamma_m(T) with retries for stability.
+        
         Parameters:
             T_values (list or np.array): List of T values for which to solve the system.
             initial_guess (np.array, optional): Initial guess for [transformed_A_1, ..., transformed_A_M, transformed_gamma_1, ..., transformed_gamma_M].
+            max_retries (int): Maximum number of retries if the solver fails to converge.
 
         Returns:
             dict: Dictionary with T as keys and solutions [A_1, ..., A_M, gamma_1, ..., gamma_M] as values.
         """
         if initial_guess is None:
-            initial_guess = np.concatenate((np.zeros(self.M), np.zeros(self.M)))  # Start with transformed_A = 0 and transformed_gamma = 0 (A=1, gamma=0.5)
+            initial_guess = np.concatenate((1000 * np.ones(self.M), 0.5 * np.ones(self.M)))  # Start with transformed_A = 0 and transformed_gamma = 0 (A=1, gamma=0.5)
 
         solutions = {}
         for T in T_values:
-            res = least_squares(self.system_of_equations, initial_guess, args=(T,))
-            transformed_solution = res.x
-            
-            # Transform back to original A and gamma
-            A_solution = np.exp(transformed_solution[:self.M])
-            gamma_solution = 1 / (1 + np.exp(-transformed_solution[self.M:]))
-            
-            solutions[T] = np.concatenate((A_solution, gamma_solution))
-            
-            initial_guess = transformed_solution  # Use the solution as the next initial guess for stability
+            success = False
+            retries = 0
+            while not success and retries < max_retries:
+                try:
+                    res = least_squares(self.system_of_equations, initial_guess, args=(T,))
+                    if res.success:
+                        transformed_solution = res.x
+                        success = True
+                    else:
+                        print(f"Warning: Solver did not converge for T={T}. Retrying ({retries + 1}/{max_retries})...")
+                        initial_guess = np.random.rand(len(initial_guess)) * 0.1  # New random guess for retry
+                        retries += 1
+                except Exception as e:
+                    print(f"Solver failed for T={T}. Error: {e}. Retrying ({retries + 1}/{max_retries})...")
+                    initial_guess = np.random.rand(len(initial_guess)) * 0.1
+                    retries += 1
 
+            if success:
+                # Transform back to original A and gamma
+                A_solution = np.exp(transformed_solution[:self.M])
+                gamma_solution = 1 / (1 + np.exp(-transformed_solution[self.M:]))
+                
+                # Store the solution
+                solutions[T] = np.concatenate((A_solution, gamma_solution))
+                initial_guess = transformed_solution  # Use the solution as the next initial guess for stability
+
+                print(f"T={T:.2f}: A_solution={A_solution}, gamma_solution={gamma_solution}")
+            else:
+                print(f"Failed to find a solution for T={T} after {max_retries} retries.")
+        
         return solutions
 
-
-    
     def numerical_derivative(self, func_values, T_values):
         """
         Compute the numerical derivative using central differences.
@@ -113,42 +130,27 @@ class StackelbergSolver:
         
     def find_optimal_T(self, T_values, solutions):
         """
-        Find the optimal T by solving \( \frac{\partial \Pi(T)}{\partial T} = 0 \) using the correct formula with logging for debugging.
-
-        Parameters:
-            T_values (list or np.array): List of T values.
-            solutions (dict): Dictionary of solutions [A_1, ..., A_M, gamma_1, ..., gamma_M] for each T.
-
-        Returns:
-            float: Optimal T value.
+        Find the optimal T by solving \( \frac{\partial \Pi(T)}{\partial T} = 0 \) using root-finding methods.
         """
+
         # Step 1: Compute the partial derivative of A_m with respect to T for each cluster
         d_A_m_d_T = []
         for m in range(self.M):
-            A_m_values = np.array([solutions[T][m] for T in T_values])  # Extract A_m for each T
-            d_A_m = self.numerical_derivative(A_m_values, T_values)  # Compute the numerical derivative of A_m with respect to T
+            A_m_values = np.array([solutions[T][m] for T in T_values])
+            d_A_m = self.numerical_derivative(A_m_values, T_values)
             d_A_m_d_T.append(d_A_m)
 
-            # Log values for debugging
-            print(f"\nCluster {m + 1}/{self.M}:")
-            print(f"A_m_values = {A_m_values}")
-            print(f"d_A_m/d_T = {d_A_m}")
+        d_A_m_d_T = np.array(d_A_m_d_T)
 
-        d_A_m_d_T = np.array(d_A_m_d_T)  # Shape: (M, len(T_values))
+        # Step 2: Compute numerator
+        numerator = self.xi * np.sum(d_A_m_d_T, axis=0)
 
-        # Step 2: Compute the numerator of d_Pi_T
-        numerator = self.xi * np.sum(d_A_m_d_T, axis=0)  # Sum the derivatives across clusters for each T
-        print(f"\nNumerator (sum of d_A_m/d_T across all clusters): {numerator}")
-
-        # Step 3: Compute the denominator (1 + sum of A_m for each T)
+        # Step 3: Compute denominator
         sum_A_values = np.sum([solutions[T][:self.M] for T in T_values], axis=1)
         denominator = 1 + sum_A_values
-        print(f"Sum of A_m for each T: {sum_A_values}")
-        print(f"Denominator (1 + sum_A_values): {denominator}")
 
-        # Step 4: Compute the derivative of Pi(T)
-        d_Pi_T = numerator / denominator - 1
-        print(f"d_Pi_T values: {d_Pi_T}")
+        # Step 4: Compute d_Pi(T)
+        d_Pi_T = (numerator / denominator) - 1
 
         # Plot d_Pi_T for visualization
         plt.figure(figsize=(10, 6))
@@ -161,19 +163,21 @@ class StackelbergSolver:
         plt.grid(True)
         plt.show()
 
-        # Step 5: Find the root of d_Pi_T = 0
-        if np.all(d_Pi_T < 0):
-            print("d_Pi_T is negative for all T. Returning T_values[-1].")
-            return T_values[-1]
-        elif np.all(d_Pi_T > 0):
-            print("d_Pi_T is positive for all T. Returning T_values[0].")
-            return T_values[0]
-        else:
-            result = minimize_scalar(lambda T: abs(np.interp(T, T_values, d_Pi_T)), bounds=(T_values[0], T_values[-1]), method='bounded')
-            optimal_T = result.x
-            print(f"Optimal T found: {optimal_T}")
-            print(f"d_Pi(T) at optimal T: {np.interp(optimal_T, T_values, d_Pi_T):.5e}")
-            return optimal_T
+        # Step 5: Find the root of d_Pi_T = 0 using Brent's method
+        try:
+            result = root_scalar(lambda T: np.interp(T, T_values, d_Pi_T),
+                                bracket=[T_values[0], T_values[-1]], method='brentq')
+            if result.converged:
+                optimal_T = result.root
+                print(f"Optimal T found using root_scalar: {optimal_T}")
+                print(f"d_Pi(T) at optimal T: {np.interp(optimal_T, T_values, d_Pi_T):.5e}")
+                return optimal_T
+            else:
+                print("root_scalar did not converge.")
+                return None
+        except ValueError:
+            print("Root-finding failed. No sign change detected in the given range.")
+            return None
 
 
 
