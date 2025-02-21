@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.special import expit  # Stable implementation of sigmoid
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 
 class Fitter:
@@ -30,7 +31,24 @@ class Fitter:
         # Clip B to prevent overflow
         B = np.clip(B, 0, 1e3)
         return L * (1 - np.exp(-k * B))
+    
+    def generalized_logistic(self, B, A_max, k, B_0, v):
+        """ Generalized Logistic Function (Richards Curve). """
+        return A_max / (1 + np.exp(-k * (B - B_0))) ** v
 
+
+    def piecewise_linear_logistic(self, B, A_linear_slope, A_linear_intercept, A_max, k, B_0):
+        """ 
+        Piecewise function: Linear for small B, Logistic for large B.
+        B_critical is chosen dynamically.
+        """
+        B_critical = np.median(B)  # Choose a threshold dynamically
+        A_logistic = A_max / (1 + np.exp(-k * (B - B_0)))
+        
+        # Apply piecewise behavior
+        A_piecewise = np.where(B < B_critical, A_linear_slope * B + A_linear_intercept, A_logistic)
+        return A_piecewise
+    
     def fit_q_vs_B(self, model="polynomial"):
         """
         Fit q values as a function of B for each user type and round.
@@ -148,7 +166,7 @@ class Fitter:
         Fit the summation of accuracies (A_m) as a function of B.
 
         Parameters:
-            model (str): The type of model to fit ('logistic', 'exp_decay').
+            model (str): The type of model to fit ('logistic', 'exp_decay', 'generalized_logistic', 'piecewise').
 
         Returns:
             function: Fitted model function.
@@ -163,6 +181,22 @@ class Fitter:
         elif model == "exp_decay":
             params, _ = curve_fit(self.exp_decay, B_values, A_m_values, p0=[max(A_m_values), 1e-4], maxfev=10000)
             fitted_model = lambda B_new: self.exp_decay(B_new, *params)
+
+        elif model == "generalized_logistic":
+            params, _ = curve_fit(self.generalized_logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values), 1])
+            fitted_model = lambda B_new: self.generalized_logistic(B_new, *params)
+
+        elif model == "piecewise":
+            # First, fit a linear model for the small-budget region
+            B_critical = np.median(B_values)  # Choose dynamically based on median
+            small_B_mask = B_values < B_critical
+            slope, intercept, _, _, _ = linregress(B_values[small_B_mask], A_m_values[small_B_mask])
+
+            # Fit the logistic model for large-budget region
+            params, _ = curve_fit(self.logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values)])
+            
+            # Combine models
+            fitted_model = lambda B_new: self.piecewise_linear_logistic(B_new, slope, intercept, *params)
 
         else:
             raise ValueError(f"Unsupported model type: {model}")

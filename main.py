@@ -15,20 +15,29 @@ if __name__ == '__main__':
     
     # directory to save the results
     RESULTS_DIR = os.getenv("RESULTS_DIR")
-    path_res = os.path.join(RESULTS_DIR, "test_10.pkl")
+    path_res = os.path.join(RESULTS_DIR, "test_sigma_1.pkl")
 
 
     cluster_optimizer = ClusterOptimization(clusters_params) # lower layer
-    B_values = np.linspace(0, 30000, 10)
+    # B_values = np.linspace(0, 30000, 20)
+    # Generate 40 values in the range 0-5000
+    B_values_low = np.linspace(0, 4000, 10)
+
+    # Generate 10 values in the range 5000-10000
+    B_values_high = np.linspace(6000, 10000, 5)
+
+    # Combine them
+    B_values = np.concatenate((B_values_low, B_values_high))
+    
     experiment = ExperimentRunner(cluster_optimizer, B_values) # overal system model
 
-    # experiment.run()
+    experiment.run()
 
     # # Save the results
-    # experiment.save_results(path_res)
+    experiment.save_results(path_res)
 
     # Load the results (to demonstrate)
-    experiment.load_results(path_res)
+    # experiment.load_results(path_res)
 
     # Example of available plots
     # plotter = Plotter(experiment.results, clusters_params)
@@ -47,11 +56,19 @@ if __name__ == '__main__':
     # B_new = np.linspace(min(A_fitter.B_values), max(A_fitter.B_values), 100)
     # A_fitter.plot_fitted_total_accuracy(fitted_model, B_new)
 
-    fitted_models = experiment.calculate_fitted_models(experiment.results, experiment.cluster_optimizer)
+    fitted_models = experiment.calculate_fitted_models(experiment.results, experiment.cluster_optimizer, model = "logistic")
     
     upper_layer = StackelbergSolver(fitted_models, 2)
     
-    T_values = np.linspace(0, 60000, 10)
+    # T_values = np.linspace(0, 1000, 10)
+    T_values_low = np.linspace(0, 100, 20)
+
+    # Generate 10 values in the range 5000-10000
+    T_values_high = np.linspace(100, 1000, 10)
+
+    # Combine them
+    T_values = np.concatenate((T_values_low, T_values_high))
+    
     sol = upper_layer.parametric_solution(T_values)
     T_star = upper_layer.find_optimal_T(T_values, sol)
 

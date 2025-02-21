@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.optimize import least_squares, brentq, root_scalar
+from scipy.optimize import least_squares, root_scalar, curve_fit
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
 
 
 
@@ -40,6 +40,7 @@ class StackelbergSolver:
         # Equation (9): Ensure A_m matches the estimated value from the fitted model
         for m in range(self.M):
             B_m = (A[m] / np.sum(A)) * T
+            B_m = gamma[m] * B_m
             A_m_estimated = self.fitted_models[m](B_m)
             residual_A = A_m_estimated - A[m]
             equations.append(residual_A)
@@ -78,7 +79,7 @@ class StackelbergSolver:
             dict: Dictionary with T as keys and solutions [A_1, ..., A_M, gamma_1, ..., gamma_M] as values.
         """
         if initial_guess is None:
-            initial_guess = np.concatenate((1000 * np.ones(self.M), 0.5 * np.ones(self.M)))  # Start with transformed_A = 0 and transformed_gamma = 0 (A=1, gamma=0.5)
+            initial_guess = np.concatenate((10 * np.ones(self.M), 0.5 * np.ones(self.M)))  # Start with transformed_A = 0 and transformed_gamma = 0 (A=1, gamma=0.5)
 
         solutions = {}
         for T in T_values:
@@ -127,7 +128,7 @@ class StackelbergSolver:
         """
         d_func = np.gradient(func_values, T_values)
         return d_func
-        
+
     def find_optimal_T(self, T_values, solutions):
         """
         Find the optimal T by solving \( \frac{\partial \Pi(T)}{\partial T} = 0 \) using root-finding methods.
