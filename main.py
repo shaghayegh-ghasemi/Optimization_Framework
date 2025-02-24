@@ -69,7 +69,7 @@ if __name__ == '__main__':
     
     # sol = upper_layer.solve_for_T_values(T_values)
     
-    T_star = upper_layer.find_optimal_T(T_min=0, T_max=5000)
+    T_star = upper_layer.find_optimal_T(T_min=0, T_max=1500)
 
 
 
