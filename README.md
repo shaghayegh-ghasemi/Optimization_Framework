@@ -1,4 +1,4 @@
-# Optimization Contract Theory Framework
+# A Hierarchical Incentive Mechanism Design in Clustered Federated Reinforcement Learning with Budget Limitation: A Contract-Stackelberg Framework
 
 This repository implements an optimization framework to solve budget-constrained problems. The framework determines optimal data contributions (\( q \)) for user types across multiple rounds while satisfying budget constraints and maximizing the server's utility.
 
