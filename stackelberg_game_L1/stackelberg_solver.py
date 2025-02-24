@@ -1,12 +1,9 @@
 import numpy as np
-from scipy.optimize import least_squares, root_scalar, curve_fit
-from scipy.stats import linregress
 import matplotlib.pyplot as plt
-
-
+from scipy.optimize import least_squares, minimize_scalar
 
 class StackelbergSolver:
-    def __init__(self, fitted_models, M):
+    def __init__(self, fitted_models, M, xi = 500, c = 0.3, epsilon=1e-4):
         """
         Initialize StackelbergSolver with fitted model functions.
         
@@ -16,169 +13,154 @@ class StackelbergSolver:
         """
         self.fitted_models = fitted_models  # List of fitted functions for accuracy
         self.M = M  # Number of local servers
-        self.xi = 1
-
-    def system_of_equations(self, transformed_vars, T):
-        """
-        Define the system of 2M equations with log/sigmoid transformations and stabilized equation (27).
-
-        Parameters:
-            transformed_vars (np.array): Array containing [transformed_A_1, ..., transformed_A_M, transformed_gamma_1, ..., transformed_gamma_M].
-            T (float): Total budget T.
-
-        Returns:
-            np.array: Array of 2M equations.
-        """
-        # Apply transformations to ensure A > 0 and 0 < gamma < 1
-        A = np.exp(transformed_vars[:self.M])  # Ensure A > 0
-        gamma = 1 / (1 + np.exp(-transformed_vars[self.M:]))  # Ensure 0 < gamma < 1
-
-        c = 1
+        self.xi = xi
+        self.c = c
+        self.epsilon = epsilon
         
+    def system_of_equations(self, variables, T):
+        """
+        Constructs the system of 2M nonlinear equations.
+        
+        Parameters:
+            variables (numpy array): Contains M gamma values followed by M accuracy values.
+            T (float): Total budget allocated by the main server.
+        
+        Returns:
+            list: System of equations to solve for gamma and accuracy.
+        """
+        gamma = np.clip(variables[:self.M], 1e-3, 1-1e-3)  # Ensure gamma remains within a valid range
+        A = np.clip(variables[self.M:], 1e-3, None)  # Ensure accuracy remains positive
         equations = []
-
-        # Equation (9): Ensure A_m matches the estimated value from the fitted model
+        
+        # M equations from the fitted models
+        total_A = max(np.sum(A), 1e-6)
         for m in range(self.M):
-            B_m = (A[m] / np.sum(A)) * T
-            B_m = gamma[m] * B_m
-            A_m_estimated = self.fitted_models[m](B_m)
-            residual_A = A_m_estimated - A[m]
-            equations.append(residual_A)
-            # print(f"Eq (9): m = {m}, A[{m}] = {A[m]:.5e}, B_m = {B_m:.5e}, A_m_estimated = {A_m_estimated:.5e}, residual_A = {residual_A:.5e}")
-
-        # Equation (27): Stabilized recursive relationship for A_m and gamma_m
-        for m in range(self.M):
-            sum_A_except_m = np.sum(A) - A[m]
-            log_exp_term = np.clip(c * sum_A_except_m, -500, 500)  # Stabilized logarithmic computation
-            exp_term = np.exp(log_exp_term)
-            denom = (1 - gamma[m]) - exp_term
-            if denom <= 1e-10:
-                # print(f"Warning: Denominator too small for m = {m}, clipping to avoid division by zero.")
-                denom = 1e-5  # Avoid division by zero
-
-            # Stabilized calculation using logarithmic approach
-            log_A_m = np.log(sum_A_except_m) + log_exp_term - np.log(np.abs(denom))
-            # A_m_value = np.exp(log_A_m)  # Convert back to original scale
-            equation_value = A[m] - log_A_m
-            equations.append(equation_value)
+            scaled_budget = gamma[m] * (A[m] / total_A) * T  # Avoid division instability
+            fitted_accuracy = self.fitted_models[m](scaled_budget)
+            # print(f"Cluster: {m}, Fitted Accuracy: {fitted_accuracy}")
+            equations.append(A[m] - fitted_accuracy)
             
-            # print(f"Eq (27): m = {m}, sum_A_except_m = {sum_A_except_m:.5e}, log_A_m = {log_A_m:.5e}, A_m_value = {A_m_value:.5e}, denom = {denom:.5e}, equation_value = {equation_value:.5e}")
-
-        return np.array(equations)
-
-    def parametric_solution(self, T_values, initial_guess=None, max_retries=3):
-        """
-        Solve the system of 2M equations for a range of T values to derive A_m(T) and gamma_m(T) with retries for stability.
-        
-        Parameters:
-            T_values (list or np.array): List of T values for which to solve the system.
-            initial_guess (np.array, optional): Initial guess for [transformed_A_1, ..., transformed_A_M, transformed_gamma_1, ..., transformed_gamma_M].
-            max_retries (int): Maximum number of retries if the solver fails to converge.
-
-        Returns:
-            dict: Dictionary with T as keys and solutions [A_1, ..., A_M, gamma_1, ..., gamma_M] as values.
-        """
-        if initial_guess is None:
-            initial_guess = np.concatenate((10 * np.ones(self.M), 0.5 * np.ones(self.M)))  # Start with transformed_A = 0 and transformed_gamma = 0 (A=1, gamma=0.5)
-
-        solutions = {}
-        for T in T_values:
-            success = False
-            retries = 0
-            while not success and retries < max_retries:
-                try:
-                    res = least_squares(self.system_of_equations, initial_guess, args=(T,))
-                    if res.success:
-                        transformed_solution = res.x
-                        success = True
-                    else:
-                        print(f"Warning: Solver did not converge for T={T}. Retrying ({retries + 1}/{max_retries})...")
-                        initial_guess = np.random.rand(len(initial_guess)) * 0.1  # New random guess for retry
-                        retries += 1
-                except Exception as e:
-                    print(f"Solver failed for T={T}. Error: {e}. Retrying ({retries + 1}/{max_retries})...")
-                    initial_guess = np.random.rand(len(initial_guess)) * 0.1
-                    retries += 1
-
-            if success:
-                # Transform back to original A and gamma
-                A_solution = np.exp(transformed_solution[:self.M])
-                gamma_solution = 1 / (1 + np.exp(-transformed_solution[self.M:]))
-                
-                # Store the solution
-                solutions[T] = np.concatenate((A_solution, gamma_solution))
-                initial_guess = transformed_solution  # Use the solution as the next initial guess for stability
-
-                print(f"T={T:.2f}: A_solution={A_solution}, gamma_solution={gamma_solution}")
-            else:
-                print(f"Failed to find a solution for T={T} after {max_retries} retries.")
-        
-        return solutions
-
-    def numerical_derivative(self, func_values, T_values):
-        """
-        Compute the numerical derivative using central differences.
-        
-        Parameters:
-            func_values (np.array): Values of the function at corresponding T_values.
-            T_values (np.array): T values.
-        
-        Returns:
-            np.array: Numerical derivative of func_values with respect to T_values.
-        """
-        d_func = np.gradient(func_values, T_values)
-        return d_func
-
-    def find_optimal_T(self, T_values, solutions):
-        """
-        Find the optimal T by solving \( \frac{\partial \Pi(T)}{\partial T} = 0 \) using root-finding methods.
-        """
-
-        # Step 1: Compute the partial derivative of A_m with respect to T for each cluster
-        d_A_m_d_T = []
+        # M equations from Equation (27) with stability fix
+        sum_A_except_m = np.maximum(np.sum(A) - A, 1e-6)  # Avoid zero division
         for m in range(self.M):
-            A_m_values = np.array([solutions[T][m] for T in T_values])
-            d_A_m = self.numerical_derivative(A_m_values, T_values)
-            d_A_m_d_T.append(d_A_m)
-
-        d_A_m_d_T = np.array(d_A_m_d_T)
-
-        # Step 2: Compute numerator
-        numerator = self.xi * np.sum(d_A_m_d_T, axis=0)
-
-        # Step 3: Compute denominator
-        sum_A_values = np.sum([solutions[T][:self.M] for T in T_values], axis=1)
-        denominator = 1 + sum_A_values
-
-        # Step 4: Compute d_Pi(T)
-        d_Pi_T = (numerator / denominator) - 1
-
-        # Plot d_Pi_T for visualization
-        plt.figure(figsize=(10, 6))
-        plt.plot(T_values, d_Pi_T, label="d_Pi(T)", marker='o')
-        plt.axhline(0, color='red', linestyle='--')
-        plt.xlabel("T")
-        plt.ylabel("d_Pi(T)")
-        plt.title("Derivative of Pi(T) vs T")
-        plt.legend()
-        plt.grid(True)
+            exp_term = np.exp(np.clip(self.c * sum_A_except_m[m], -100, 100))  # Prevent overflow
+            denom = max((1 - gamma[m]) - exp_term, 1e-6)  # Ensure denominator is not too small
+            rhs = (sum_A_except_m[m] * exp_term) / denom
+            equations.append(A[m] - rhs)
+        
+        return equations
+    
+    def solve_system(self, T):
+        """
+        Solves the system of equations for given T using least_squares with constraints.
+        
+        Parameters:
+            T (float): Total budget allocated by the main server.
+        
+        Returns:
+            numpy array: Solutions for gamma and A values.
+        """
+        initial_A_guess = np.random.uniform(0.8, 1.2, self.M) * max(T / (10 * self.M), 1.0)  # Slight variation in A
+        initial_gamma_guess = np.random.uniform(0.4, 0.6, self.M)  # Randomize gamma in a reasonable range
+        initial_guess = np.concatenate((initial_gamma_guess, initial_A_guess))
+        bounds = ([1e-3] * self.M + [1e-3] * self.M, [1-1e-3] * self.M + [np.inf] * self.M)  # Constraints
+        solution = least_squares(self.system_of_equations, initial_guess, bounds=bounds, args=(T,))
+        return solution.x
+    
+    def solve_for_T_values(self, T_values):
+        """
+        Solves the system for multiple values of T and prints the results.
+        
+        Parameters:
+            T_values (list): List of T values to solve the system for.
+        """
+        for T in T_values:
+            solution = self.solve_system(T)
+            gamma_values = solution[:self.M]
+            accuracy_values = solution[self.M:]
+            print(f"For T = {T}:")
+            print(f"  Gamma values: {gamma_values}")
+            print(f"  Accuracy values: {accuracy_values}\n")
+            
+    def compute_dA_dT(self, T):
+        """
+        Computes numerical derivative dA/dT using central differences for better accuracy.
+        """
+        step = max(self.epsilon, 1.0)  # Increase step size for smoother differentiation
+        A_T_plus = self.solve_system(T + step)[self.M:]
+        A_T_minus = self.solve_system(T - step)[self.M:]
+        dA_dT = (A_T_plus - A_T_minus) / (2 * step)  # Central difference
+        return dA_dT, (A_T_plus + A_T_minus) / 2  # Return averaged A_T for stability
+    
+    def main_server_utility(self, T):
+        _, A_T = self.compute_dA_dT(T)
+        print(f"Debug: For T={T}, A_T={A_T}")
+        return self.xi * np.log(1 + np.sum(A_T)) - T
+    
+    def main_server_derivative(self, T):
+        dA_dT, A_T = self.compute_dA_dT(T)
+        numerator = np.sum(dA_dT)
+        denominator = max(1 + np.sum(A_T), 1e-6)  # Prevent division by near-zero values
+        return (self.xi * numerator / denominator) - 1
+    
+    def find_optimal_T(self, T_min=1000, T_max=20000):
+        """
+        Finds the optimal T by solving dPi/dT = 0 using scalar minimization.
+        If dPi/dT is far from zero, it retries with adjusted bounds.
+        """
+        print("Plotting Utility Function for Debugging...")
+        self.plot_utility_and_derivative(T_min, T_max)
+        
+        result = minimize_scalar(lambda T: abs(self.main_server_derivative(T)), bounds=(T_min, T_max), method='bounded')
+        dPi_dT_opt = self.main_server_derivative(result.x)
+        print(f"Verifying Optimal T: dPi/dT({result.x}) = {dPi_dT_opt}")
+        
+        if abs(dPi_dT_opt) > 1e-2:
+            print("Warning: dPi/dT is not close to zero! Adjusting optimization bounds.")
+            return self.find_optimal_T(T_min=result.x * 0.8, T_max=result.x * 1.2)  # Refine search range
+        
+        return result.x
+    
+    def plot_utility_and_derivative(self, T_min, T_max):
+        """
+        Plots the main server utility function and its derivative over a range of T.
+        """
+        T_values = np.linspace(T_min, T_max, 50)
+        Pi_values = [self.main_server_utility(T) for T in T_values]
+        dPi_values = [self.main_server_derivative(T) for T in T_values]
+        
+        plt.figure(figsize=(10, 5))
+        
+        # Plot Utility Function
+        plt.subplot(1, 2, 1)
+        plt.plot(T_values, Pi_values, marker='o', linestyle='-')
+        plt.xlabel("Total Budget (T)")
+        plt.ylabel("Main Server Utility Pi(T)")
+        plt.title("Utility Function of the Main Server")
+        plt.grid()
+        
+        # Plot Derivative
+        plt.subplot(1, 2, 2)
+        plt.plot(T_values, dPi_values, marker='s', linestyle='-', color='r')
+        plt.xlabel("Total Budget (T)")
+        plt.ylabel("Derivative dPi/dT")
+        plt.title("Derivative of Main Server Utility")
+        plt.grid()
+        
+        plt.tight_layout()
         plt.show()
-
-        # Step 5: Find the root of d_Pi_T = 0 using Brent's method
-        try:
-            result = root_scalar(lambda T: np.interp(T, T_values, d_Pi_T),
-                                bracket=[T_values[0], T_values[-1]], method='brentq')
-            if result.converged:
-                optimal_T = result.root
-                print(f"Optimal T found using root_scalar: {optimal_T}")
-                print(f"d_Pi(T) at optimal T: {np.interp(optimal_T, T_values, d_Pi_T):.5e}")
-                return optimal_T
-            else:
-                print("root_scalar did not converge.")
-                return None
-        except ValueError:
-            print("Root-finding failed. No sign change detected in the given range.")
-            return None
-
-
-
+        
+    def plot_utility(self, T_min, T_max):
+        """
+        Plots the main server utility function over a range of T to check concavity.
+        """
+        T_values = np.linspace(T_min, T_max, 50)
+        Pi_values = [self.main_server_utility(T) for T in T_values]
+        
+        plt.figure(figsize=(8, 5))
+        plt.plot(T_values, Pi_values, marker='o', linestyle='-')
+        plt.xlabel("Total Budget (T)")
+        plt.ylabel("Main Server Utility Pi(T)")
+        plt.title("Utility Function of the Main Server")
+        plt.grid()
+        plt.show()
