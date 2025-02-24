@@ -20,10 +20,10 @@ class Fitter:
         # self.total_accuracies = [result[5] for result in results]  # Extract total accuracies
 
     @staticmethod
-    def logistic(B, L, k, B0):
-        """Logistic growth function with numerical stability."""
-        z = -k * (B - B0)
-        return L * expit(-z)  # Use expit for stable logistic sigmoid
+    def logistic(B, L, k, B0, v):
+        """Improved logistic function with extra flexibility to fit all data points."""
+        B = np.maximum(B, 1e-6)  # Prevent division instability at B=0
+        return L * (B / (B + B0)) * (1 / (1 + np.exp(-k * (B - B0))) ** v)
 
     @staticmethod
     def exp_decay(B, L, k):
@@ -32,10 +32,11 @@ class Fitter:
         B = np.clip(B, 0, 1e3)
         return L * (1 - np.exp(-k * B))
     
-    def generalized_logistic(self, B, A_max, k, B_0, v):
-        """ Generalized Logistic Function (Richards Curve). """
-        return A_max / (1 + np.exp(-k * (B - B_0))) ** v
-
+    @staticmethod
+    def generalized_logistic(B, A_max, k, B_0, v):
+        """Generalized logistic function that ensures A_m(0) = 0."""
+        B = np.maximum(B, 1e-6)  # Prevent division instability at B=0
+        return A_max * (B / (B + B_0)) * (1 / (1 + np.exp(-k * (B - B_0))) ** v)
 
     def piecewise_linear_logistic(self, B, A_linear_slope, A_linear_intercept, A_max, k, B_0):
         """ 
@@ -66,15 +67,27 @@ class Fitter:
             A_m_values = np.array([result[5] for result in cluster_results])  # Extract total accuracies
 
             if model == "logistic":
-                params, _ = curve_fit(self.logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values)])
+                params, _ = curve_fit(
+                    self.logistic, B_values, A_m_values,
+                    p0=[max(A_m_values), 0.01, np.median(B_values), 1],  # Adding v parameter
+                    bounds=([0, 1e-6, 0, 0.1], [max(A_m_values) * 2, 1, max(B_values), 5])  # More robust bounds
+                )
                 fitted_model = lambda B_new, p=params: self.logistic(B_new, *p)
 
             elif model == "exp_decay":
-                params, _ = curve_fit(self.exp_decay, B_values, A_m_values, p0=[max(A_m_values), 1e-4], maxfev=10000)
+                params, _ = curve_fit(
+                    self.exp_decay, B_values, A_m_values,
+                    p0=[max(A_m_values), 1e-4], maxfev=10000
+                )
                 fitted_model = lambda B_new, p=params: self.exp_decay(B_new, *p)
 
             elif model == "generalized_logistic":
-                params, _ = curve_fit(self.generalized_logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values), 1])
+                params, _ = curve_fit(
+                    self.generalized_logistic, B_values, A_m_values,
+                    p0=[np.max(A_m_values), 0.001, np.min(B_values), 0.5],  # More stable initial values
+                    bounds=([0, 1e-6, 0, 0.1], [np.max(A_m_values) * 2, 1, np.max(B_values), 5]),
+                    maxfev=10000
+                )
                 fitted_model = lambda B_new, p=params: self.generalized_logistic(B_new, *p)
 
             elif model == "piecewise":
@@ -84,7 +97,10 @@ class Fitter:
                 slope, intercept, _, _, _ = linregress(B_values[small_B_mask], A_m_values[small_B_mask])
 
                 # Fit the logistic model for large-budget region
-                params, _ = curve_fit(self.logistic, B_values, A_m_values, p0=[max(A_m_values), 0.01, np.median(B_values)])
+                params, _ = curve_fit(
+                    self.logistic, B_values, A_m_values,
+                    p0=[max(A_m_values), 0.01, np.median(B_values)]
+                )
 
                 # Combine models
                 fitted_model = lambda B_new, p=params: self.piecewise_linear_logistic(B_new, slope, intercept, *p)

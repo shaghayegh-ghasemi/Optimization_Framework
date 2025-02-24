@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import least_squares, minimize_scalar
 
 class StackelbergSolver:
-    def __init__(self, fitted_models, M, xi = 500, c = 0.3, epsilon=1e-4):
+    def __init__(self, fitted_models, M, xi = 1000.0, c = 0.3, epsilon=1e-4):
         """
         Initialize StackelbergSolver with fitted model functions.
         
@@ -33,12 +33,17 @@ class StackelbergSolver:
         equations = []
         
         # M equations from the fitted models
-        total_A = max(np.sum(A), 1e-6)
+        # total_A = max(np.sum(A), 1e-6)
+        total_A = max(np.sum(A), T / 10)  # Ensure a minimum meaningful scale
+
+        B = gamma * (A / total_A) * T  # Compute allocated budgets with gamma factor
+        
+        # print(f"Debug: T={T}, B_m={B}")  # Debug budget values
+        
+        fitted_accuracies = np.array([self.fitted_models[m](B[m]) for m in range(self.M)])
         for m in range(self.M):
-            scaled_budget = gamma[m] * (A[m] / total_A) * T  # Avoid division instability
-            fitted_accuracy = self.fitted_models[m](scaled_budget)
-            # print(f"Cluster: {m}, Fitted Accuracy: {fitted_accuracy}")
-            equations.append(A[m] - fitted_accuracy)
+            # print(f"Debug: T={T}, Cluster {m}, B_m={B[m]}, A_m(expected)={fitted_accuracies[m]}, A_m(actual)={A[m]}")  # Debug accuracy values
+            equations.append(A[m] - fitted_accuracies[m])
             
         # M equations from Equation (27) with stability fix
         sum_A_except_m = np.maximum(np.sum(A) - A, 1e-6)  # Avoid zero division
@@ -60,12 +65,27 @@ class StackelbergSolver:
         Returns:
             numpy array: Solutions for gamma and A values.
         """
-        initial_A_guess = np.random.uniform(0.8, 1.2, self.M) * max(T / (10 * self.M), 1.0)  # Slight variation in A
-        initial_gamma_guess = np.random.uniform(0.4, 0.6, self.M)  # Randomize gamma in a reasonable range
+        # Improved Initial Guess for A_m
+        initial_A_guess = np.maximum(np.random.uniform(0.5, 1.5, self.M) * (T / (5 * self.M)), 1e-2)
+
+        # Improved Initial Guess for gamma_m
+        initial_gamma_guess = np.random.uniform(0.3, 0.7, self.M)
+
+        # Combine initial guesses
         initial_guess = np.concatenate((initial_gamma_guess, initial_A_guess))
-        bounds = ([1e-3] * self.M + [1e-3] * self.M, [1-1e-3] * self.M + [np.inf] * self.M)  # Constraints
+
+        # Improved Bounds
+        gamma_lower_bound = [1e-4] * self.M
+        gamma_upper_bound = [1 - 1e-4] * self.M
+        A_lower_bound = [max(T / (50 * self.M), 1e-3)] * self.M  # Ensure A_m doesn't collapse
+        A_upper_bound = [np.inf] * self.M  # No upper bound restriction
+
+        bounds = (gamma_lower_bound + A_lower_bound, gamma_upper_bound + A_upper_bound)
+
+        # Solve System
         solution = least_squares(self.system_of_equations, initial_guess, bounds=bounds, args=(T,))
         return solution.x
+
     
     def solve_for_T_values(self, T_values):
         """
@@ -94,7 +114,7 @@ class StackelbergSolver:
     
     def main_server_utility(self, T):
         _, A_T = self.compute_dA_dT(T)
-        print(f"Debug: For T={T}, A_T={A_T}")
+        # print(f"Debug: For T={T}, A_T={A_T}, Sum A_T={np.sum(A_T)}, log term={np.log(1 + np.sum(A_T))}")  # Debug print for A_T values
         return self.xi * np.log(1 + np.sum(A_T)) - T
     
     def main_server_derivative(self, T):

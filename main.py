@@ -58,7 +58,7 @@ if __name__ == '__main__':
     
     upper_layer = StackelbergSolver(fitted_models, 4)
     
-    # T_values = np.linspace(0, 30000, 5)
+    # T_values = np.linspace(0, 30000, 20)
     # T_values_low = np.linspace(0, 100, 20)
 
     # # Generate 10 values in the range 5000-10000
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     
     # sol = upper_layer.solve_for_T_values(T_values)
     
-    T_star = upper_layer.find_optimal_T(T_min=0, T_max=20000)
+    T_star = upper_layer.find_optimal_T(T_min=0, T_max=5000)
 
 
 
