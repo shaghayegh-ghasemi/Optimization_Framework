@@ -33,13 +33,13 @@ class StackelbergSolver:
         equations = []
         
         # M equations from the fitted models
-        # total_A = max(np.sum(A), 1e-6)
         total_A = max(np.sum(A), T / 10)  # Ensure a minimum meaningful scale
 
-        B = gamma * (A / total_A) * T  # Compute allocated budgets with gamma factor
-        
-        # print(f"Debug: T={T}, B_m={B}")  # Debug budget values
-        
+        # B = np.maximum(gamma * (A / total_A) * T, 1e-3)  # Avoid very small B values
+        # weights = np.linspace(0.8, 1.2, self.M)  # Slight perturbation for diversity
+        # B = np.maximum(gamma * (A / total_A) * T * weights, 1e-3)
+        B = np.maximum(gamma * (A / total_A) * T * np.linspace(0.8, 1.2, self.M), 1e-3)
+
         fitted_accuracies = np.array([self.fitted_models[m](B[m]) for m in range(self.M)])
         for m in range(self.M):
             # print(f"Debug: T={T}, Cluster {m}, B_m={B[m]}, A_m(expected)={fitted_accuracies[m]}, A_m(actual)={A[m]}")  # Debug accuracy values
@@ -66,10 +66,11 @@ class StackelbergSolver:
             numpy array: Solutions for gamma and A values.
         """
         # Improved Initial Guess for A_m
-        initial_A_guess = np.maximum(np.random.uniform(0.5, 1.5, self.M) * (T / (5 * self.M)), 1e-2)
+        # initial_A_guess = np.full(self.M, max(T / (2 * self.M), 1e-2))  # Set A_m to a fraction of T
+        initial_A_guess = np.full(self.M, max(T / (2 * self.M), 1e-2)) * np.linspace(0.9, 1.1, self.M)
 
         # Improved Initial Guess for gamma_m
-        initial_gamma_guess = np.random.uniform(0.3, 0.7, self.M)
+        initial_gamma_guess = np.random.uniform(0.45, 0.55, self.M)  # Start with balanced allocation
 
         # Combine initial guesses
         initial_guess = np.concatenate((initial_gamma_guess, initial_A_guess))
@@ -106,17 +107,23 @@ class StackelbergSolver:
         """
         Computes numerical derivative dA/dT using central differences for better accuracy.
         """
-        step = max(self.epsilon, 1.0)  # Increase step size for smoother differentiation
+        step = max(self.epsilon, T * 0.55)  # Step size scales with T
         A_T_plus = self.solve_system(T + step)[self.M:]
         A_T_minus = self.solve_system(T - step)[self.M:]
-        dA_dT = (A_T_plus - A_T_minus) / (2 * step)  # Central difference
+        dA_dT = np.clip((A_T_plus - A_T_minus) / (2 * step), -100, 100)
         return dA_dT, (A_T_plus + A_T_minus) / 2  # Return averaged A_T for stability
     
     def main_server_utility(self, T):
         _, A_T = self.compute_dA_dT(T)
-        # print(f"Debug: For T={T}, A_T={A_T}, Sum A_T={np.sum(A_T)}, log term={np.log(1 + np.sum(A_T))}")  # Debug print for A_T values
-        return self.xi * np.log(1 + np.sum(A_T)) - T
-    
+        A_T_sum = np.sum(A_T)
+        
+        # Induce concavity by limiting growth
+        A_T_cap = min(A_T_sum, T / 2)  # Ensure it does not grow too large
+        # log_term = np.log(1 + A_T_cap)
+        log_term = np.log(1 + np.sum(A_T)) * (1 - np.exp(-T / 1200))
+        
+        return self.xi * log_term - T
+
     def main_server_derivative(self, T):
         dA_dT, A_T = self.compute_dA_dT(T)
         numerator = np.sum(dA_dT)
@@ -129,7 +136,7 @@ class StackelbergSolver:
         If dPi/dT is far from zero, it retries with adjusted bounds.
         """
         print("Plotting Utility Function for Debugging...")
-        self.plot_utility_and_derivative(T_min, T_max)
+        self.plot_utility(T_min, T_max)
         
         result = minimize_scalar(lambda T: abs(self.main_server_derivative(T)), bounds=(T_min, T_max), method='bounded')
         dPi_dT_opt = self.main_server_derivative(result.x)

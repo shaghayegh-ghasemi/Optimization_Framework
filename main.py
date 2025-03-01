@@ -69,7 +69,15 @@ if __name__ == '__main__':
     
     # sol = upper_layer.solve_for_T_values(T_values)
     
-    T_star = upper_layer.find_optimal_T(T_min=0, T_max=1500)
+    T_star = upper_layer.find_optimal_T(T_min=0, T_max=8500)
+    
+    res_star = upper_layer.solve_system(T_star)
+    
+    gamma_values = res_star[:4]
+    accuracy_values = res_star[4:]
+    print(f"For T = {T_star}:")
+    print(f"  Gamma values: {gamma_values}")
+    print(f"  Accuracy values: {accuracy_values}\n")
 
 
 
