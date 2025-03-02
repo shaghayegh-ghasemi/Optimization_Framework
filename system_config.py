@@ -35,3 +35,5 @@ clusters_params = [
             "q_max": np.array([200 + i * 30 for i in range(3)])
         }
     ]
+
+M = 4

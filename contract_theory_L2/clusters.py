@@ -33,6 +33,16 @@ class ClusterOptimization:
             q, utility, accuracy, savings, total_accuracy = cluster.solve(B)
             results.append((B, utility, q, accuracy, savings, total_accuracy))
         return results
+    
+    def solve_experiment_B(self, allocated_B):
+        """
+        Find optimal q for each cluster based on the allocated budget from upper layer
+        """
+        optimal_results = []
+        for m, cluster in enumerate(self.clusters):
+            q, utility, accuracy, savings, total_accuracy = cluster.solve(allocated_B[m])
+            optimal_results.append((allocated_B[m], utility, q, accuracy, savings, total_accuracy))
+        return optimal_results
 
     def parametric_relation_q_B(self, cluster_index, B_values):
         cluster = self.clusters[cluster_index]

@@ -5,7 +5,7 @@ from scipy.stats import linregress
 import matplotlib.pyplot as plt
 
 class Fitter:
-    def __init__(self, results, opt_problem):
+    def __init__(self, results):
         """
         Initialize QFitter with results and optimization problem.
 
@@ -14,7 +14,7 @@ class Fitter:
             opt_problem (object): Optimization problem object defining I (user types) and T (rounds).
         """
         self.results = results
-        self.opt_problem = opt_problem
+        # self.opt_problem = opt_problem
         self.B_values = [result[0] for result in results[0]]  # Extract B-values
         # self.q_values = [result[2] for result in results]  # Extract q matrices
         # self.total_accuracies = [result[5] for result in results]  # Extract total accuracies
