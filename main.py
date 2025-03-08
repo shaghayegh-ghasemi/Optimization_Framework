@@ -29,7 +29,7 @@ if __name__ == '__main__':
     
     experiment = ExperimentRunner() # overal system model
 
-    experiment.run(B_values=B_values, path=path_res, iteration=2)
+    experiment.run(B_values=B_values, path=path_res, iteration=1)
 
     # Example of available plots
     # plotter = Plotter(experiment.results, clusters_params)

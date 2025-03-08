@@ -107,7 +107,7 @@ class StackelbergSolver:
         """
         Computes numerical derivative dA/dT using central differences for better accuracy.
         """
-        step = max(self.epsilon, T * 0.55)  # Step size scales with T
+        step = max(self.epsilon, min(T * 0.01, 10))  # Step size scales with T
         A_T_plus = self.solve_system(T + step)[self.M:]
         A_T_minus = self.solve_system(T - step)[self.M:]
         dA_dT = np.clip((A_T_plus - A_T_minus) / (2 * step), -100, 100)
@@ -118,8 +118,6 @@ class StackelbergSolver:
         A_T_sum = np.sum(A_T)
         
         # Induce concavity by limiting growth
-        A_T_cap = min(A_T_sum, T / 2)  # Ensure it does not grow too large
-        # log_term = np.log(1 + A_T_cap)
         log_term = np.log(1 + np.sum(A_T)) * (1 - np.exp(-T / 1200))
         
         return self.xi * log_term - T
@@ -130,23 +128,33 @@ class StackelbergSolver:
         denominator = max(1 + np.sum(A_T), 1e-6)  # Prevent division by near-zero values
         return (self.xi * numerator / denominator) - 1
     
-    def find_optimal_T(self, T_min=1000, T_max=20000):
+    def find_optimal_T(self, T_min=1000, T_max=5000):
         """
-        Finds the optimal T by solving dPi/dT = 0 using scalar minimization.
-        If dPi/dT is far from zero, it retries with adjusted bounds.
+        Finds the optimal T by maximizing the main server utility function directly.
+        This ensures we get the true peak instead of relying on numerical derivatives.
         """
         print("Plotting Utility Function for Debugging...")
-        self.plot_utility(T_min, T_max)
-        
-        result = minimize_scalar(lambda T: abs(self.main_server_derivative(T)), bounds=(T_min, T_max), method='bounded')
-        dPi_dT_opt = self.main_server_derivative(result.x)
-        print(f"Verifying Optimal T: dPi/dT({result.x}) = {dPi_dT_opt}")
-        
-        if abs(dPi_dT_opt) > 1e-2:
-            print("Warning: dPi/dT is not close to zero! Adjusting optimization bounds.")
-            return self.find_optimal_T(T_min=result.x * 0.8, T_max=result.x * 1.2)  # Refine search range
-        
-        return result.x
+        self.plot_utility_and_derivative(T_min, T_max)  # Debugging visualization
+
+        # **1st Attempt: Direct Maximization**
+        result = minimize_scalar(lambda T: -self.main_server_utility(T), bounds=(T_min, T_max), method='bounded')
+
+        # **Check if the found T is reasonable**
+        optimal_T = result.x
+        print(f"Initial optimization found T = {optimal_T}, with Pi(T) = {self.main_server_utility(optimal_T)}")
+
+        # **2nd Attempt: Grid Search in Refined Range**
+        if not (T_min <= optimal_T <= T_max):  
+            print("Warning: Optimization might have failed. Running Grid Search...")
+
+        T_values = np.linspace(T_min, T_max, 100)  # Search in a finer range
+        Pi_values = [self.main_server_utility(T) for T in T_values]
+        optimal_T_grid = T_values[np.argmax(Pi_values)]
+
+        print(f"Grid search found T = {optimal_T_grid}, with Pi(T) = {max(Pi_values)}")
+
+        return optimal_T_grid  # Return the best T from grid search
+
     
     def plot_utility_and_derivative(self, T_min, T_max):
         """

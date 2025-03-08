@@ -47,7 +47,7 @@ class ExperimentRunner:
         
         for i in range(iteration):
             print(f"Started the ietarion {i}.")
-            T_star = upper_layer.find_optimal_T(T_min=0, T_max=8500)
+            T_star = upper_layer.find_optimal_T()
             res_star = upper_layer.solve_system(T_star)
             
             gamma_values = res_star[:4]
